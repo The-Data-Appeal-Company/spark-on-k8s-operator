@@ -56,38 +56,41 @@ var createCmd = &cobra.Command{
 	Use:   "create <yaml file>",
 	Short: "Create a SparkApplication object",
 	Long:  `Create a SparkApplication from a given YAML file storing the application specification.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if From != "" && len(args) != 1 {
-			fmt.Fprintln(os.Stderr, "must specify the name of a ScheduledSparkApplication")
-			return
+			//fmt.Fprintln(os.Stderr, "must specify the name of a ScheduledSparkApplication")
+			return fmt.Errorf("must specify the name of a ScheduledSparkApplication")
 		}
 
 		if len(args) != 1 {
-			fmt.Fprintln(os.Stderr, "must specify a YAML file of a SparkApplication")
-			return
+			//fmt.Fprintln(os.Stderr, "must specify a YAML file of a SparkApplication")
+			return fmt.Errorf("must specify a YAML file of a SparkApplication")
 		}
 
 		kubeClient, err := getKubeClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to get Kubernetes client: %v\n", err)
-			return
+			//fmt.Fprintf(os.Stderr, "failed to get Kubernetes client: %v\n", err)
+			return fmt.Errorf("failed to get Kubernetes client: %v\n", err)
 		}
 
 		crdClient, err := getSparkApplicationClient()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to get SparkApplication client: %v\n", err)
-			return
+			//fmt.Fprintf(os.Stderr, "failed to get SparkApplication client: %v\n", err)
+			return fmt.Errorf("failed to get SparkApplication client: %v\n", err)
 		}
 
 		if From != "" {
 			if err := createFromScheduledSparkApplication(args[0], kubeClient, crdClient); err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
+				//fmt.Fprintf(os.Stderr, "%v\n", err)
+				return fmt.Errorf("%v\n", err)
 			}
 		} else {
 			if err := createFromYaml(args[0], kubeClient, crdClient); err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
+				//fmt.Fprintf(os.Stderr, "%v\n", err)
+				return fmt.Errorf("%v\n", err)
 			}
 		}
+		return nil
 	},
 }
 
