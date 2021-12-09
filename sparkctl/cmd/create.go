@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -182,7 +183,7 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 		return err
 	}
 
-	fmt.Printf("SparkApplication \"%s\" created\n", app.Name)
+	fmt.Printf("SparkApplication %q created\n", app.Name)
 
 	if WaitTillCompletion {
 		for {
@@ -191,15 +192,21 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 				return fmt.Errorf("failed to get SparkApplication %s: %v", app.Name, err)
 			}
 
-			fmt.Printf("SparkApplication \"%s\" status: \"%s\"\n", app.Name,appStatus.Status.AppState.State)
+			fmt.Printf("SparkApplication %q status: %q\n", app.Name, appStatus.Status.AppState.State)
 
 			if appStatus.Status.AppState.State == v1beta2.FailedState ||
 				appStatus.Status.AppState.State == v1beta2.UnknownState {
-				return fmt.Errorf("SparkApplication  \"%s\" failed with status \"%s\"\n", app.Name, appStatus.Status.AppState.State)
+
+				logs, err := getPodLogs(app, kubeClient)
+				if err != nil {
+					logs = err.Error()
+				}
+
+				return fmt.Errorf("SparkApplication  %q failed with status %q\nLogs: %s", app.Name, appStatus.Status.AppState.State, logs)
 			}
 
 			if appStatus.Status.AppState.State == v1beta2.CompletedState {
-				fmt.Printf("SparkApplication  \"%s\" exit succesfully with status \"%s\"\n", app.Name, appStatus.Status.AppState.State)
+				fmt.Printf("SparkApplication  %q exit succesfully with status %q\n", app.Name, appStatus.Status.AppState.State)
 				break
 			}
 
@@ -208,6 +215,28 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 	}
 
 	return nil
+}
+
+func getPodLogs(app *v1beta2.SparkApplication, kubeClient clientset.Interface) (string, error) {
+
+	var podName string
+	if ExecutorId < 0 {
+		podName = app.Status.DriverInfo.PodName
+	} else {
+		podName = strings.NewReplacer("driver", fmt.Sprintf("exec-%d", ExecutorId)).
+			Replace(app.Status.DriverInfo.PodName)
+	}
+
+	if podName == "" {
+		return "", fmt.Errorf("unable to fetch logs as the name of the target pod is empty")
+	}
+
+	rawLogs, err := kubeClient.CoreV1().Pods(Namespace).GetLogs(podName, &apiv1.PodLogOptions{}).Do(context.TODO()).Raw()
+	if err != nil {
+		return "", err
+	}
+
+	return string(rawLogs), nil
 }
 
 func loadFromYAML(yamlFile string) (*v1beta2.SparkApplication, error) {
