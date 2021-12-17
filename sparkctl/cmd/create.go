@@ -185,6 +185,9 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 
 	fmt.Printf("SparkApplication %q created\n", app.Name)
 
+	var podName = ""
+	var logs = "no log found"
+	var errLogs error
 	if WaitTillCompletion {
 		for {
 			appStatus, err := getSparkApplication(app.Name, crdClient)
@@ -197,11 +200,6 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 			if appStatus.Status.AppState.State == v1beta2.FailedState ||
 				appStatus.Status.AppState.State == v1beta2.UnknownState {
 
-				logs, err := getPodLogs(app, kubeClient)
-				if err != nil {
-					logs = err.Error()
-				}
-
 				return fmt.Errorf("SparkApplication  %q failed with status %q\nLogs: %s", app.Name, appStatus.Status.AppState.State, logs)
 			}
 
@@ -210,6 +208,17 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 				break
 			}
 
+			if podName == "" {
+				podName = getPodName(app)
+			}else{
+				logs, errLogs = getPodLogs(podName, kubeClient)
+				if errLogs != nil {
+					logs = errLogs.Error()
+				}
+			}
+
+
+
 			time.Sleep(5 * time.Second)
 		}
 	}
@@ -217,8 +226,7 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 	return nil
 }
 
-func getPodLogs(app *v1beta2.SparkApplication, kubeClient clientset.Interface) (string, error) {
-
+func getPodName(app *v1beta2.SparkApplication) string {
 	var podName string
 	if ExecutorId < 0 {
 		podName = app.Status.DriverInfo.PodName
@@ -226,6 +234,10 @@ func getPodLogs(app *v1beta2.SparkApplication, kubeClient clientset.Interface) (
 		podName = strings.NewReplacer("driver", fmt.Sprintf("exec-%d", ExecutorId)).
 			Replace(app.Status.DriverInfo.PodName)
 	}
+	return podName
+}
+
+func getPodLogs(podName string, kubeClient clientset.Interface) (string, error) {
 
 	if podName == "" {
 		return "", fmt.Errorf("unable to fetch logs as the name of the target pod is empty")
@@ -238,6 +250,8 @@ func getPodLogs(app *v1beta2.SparkApplication, kubeClient clientset.Interface) (
 
 	return string(rawLogs), nil
 }
+
+
 
 func loadFromYAML(yamlFile string) (*v1beta2.SparkApplication, error) {
 	file, err := os.Open(yamlFile)
