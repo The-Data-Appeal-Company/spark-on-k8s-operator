@@ -24,7 +24,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -200,6 +199,12 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 			if appStatus.Status.AppState.State == v1beta2.FailedState ||
 				appStatus.Status.AppState.State == v1beta2.UnknownState {
 
+				fmt.Printf("SparkApplication pod name : %q", podName)
+				logs, errLogs = getPodLogs(podName, kubeClient)
+				if errLogs != nil {
+					logs = errLogs.Error()
+				}
+
 				return fmt.Errorf("SparkApplication  %q failed with status %q\nLogs: %s", app.Name, appStatus.Status.AppState.State, logs)
 			}
 
@@ -209,15 +214,9 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 			}
 
 			if podName == "" {
-				podName = getPodName(app)
-			}else{
-				logs, errLogs = getPodLogs(podName, kubeClient)
-				if errLogs != nil {
-					logs = errLogs.Error()
-				}
+				fmt.Printf("SparkApplication pod name : %q | %q | %q\n", podName, app.Status.DriverInfo.PodName, appStatus.Status.DriverInfo.PodName)
+				podName = getPodName(appStatus)
 			}
-
-
 
 			time.Sleep(5 * time.Second)
 		}
@@ -227,14 +226,7 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 }
 
 func getPodName(app *v1beta2.SparkApplication) string {
-	var podName string
-	if ExecutorId < 0 {
-		podName = app.Status.DriverInfo.PodName
-	} else {
-		podName = strings.NewReplacer("driver", fmt.Sprintf("exec-%d", ExecutorId)).
-			Replace(app.Status.DriverInfo.PodName)
-	}
-	return podName
+	return app.Status.DriverInfo.PodName
 }
 
 func getPodLogs(podName string, kubeClient clientset.Interface) (string, error) {
@@ -250,8 +242,6 @@ func getPodLogs(podName string, kubeClient clientset.Interface) (string, error) 
 
 	return string(rawLogs), nil
 }
-
-
 
 func loadFromYAML(yamlFile string) (*v1beta2.SparkApplication, error) {
 	file, err := os.Open(yamlFile)
