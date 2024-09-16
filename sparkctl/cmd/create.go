@@ -51,6 +51,7 @@ var S3ForcePathStyle bool
 var Override bool
 var From string
 var WaitTillCompletion bool
+var Timeout time.Duration
 
 var createCmd = &cobra.Command{
 	Use:   "create <yaml file>",
@@ -113,6 +114,8 @@ func init() {
 		"the name of ScheduledSparkApplication from which a forced SparkApplication run is created")
 	createCmd.Flags().BoolVarP(&WaitTillCompletion, "wait", "w", false,
 		"whether to wait the completion of the SparkApplication created")
+	createCmd.Flags().DurationVarP(&Timeout, "timeout", "t", 0*time.Second,
+		"timeout the application during a specified duration ")
 }
 
 func createFromYaml(yamlFile string, kubeClient clientset.Interface, crdClient crdclientset.Interface) error {
@@ -187,6 +190,17 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 	var podName = ""
 	var logs = "no log found"
 	var errLogs error
+	var NeedTimeOut bool
+	var timeoutInSec float64
+
+	if Timeout > 0*time.Second {
+		WaitTillCompletion = true
+		NeedTimeOut = true
+		fmt.Printf("SparkApplication need to timeout after %s\n", Timeout)
+	} else {
+		fmt.Printf("SparkApplication doesn't need to timeout\n")
+	}
+
 	if WaitTillCompletion {
 		for {
 			appStatus, err := getSparkApplication(app.Name, crdClient)
@@ -218,7 +232,18 @@ func createSparkApplication(app *v1beta2.SparkApplication, kubeClient clientset.
 				podName = getPodName(appStatus)
 			}
 
+			if NeedTimeOut && timeoutInSec >= Timeout.Seconds() {
+				message := fmt.Sprintf("SparkApplication %q timed out after %s deleting the application", app.Name, Timeout)
+				fmt.Printf(message)
+				err = crdClient.SparkoperatorV1beta2().SparkApplications(Namespace).Delete(context.TODO(), app.Name, metav1.DeleteOptions{})
+				if err != nil {
+					return fmt.Errorf("SparkApplication  %q failed to delete", app.Name)
+				}
+				return fmt.Errorf(message)
+			}
+
 			time.Sleep(5 * time.Second)
+			timeoutInSec += 5
 		}
 	}
 
